@@ -35,10 +35,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os.h"
-#include "gpio.h"
 
 /* USER CODE BEGIN Includes */     
-
+#include "gpio.h"
 /* USER CODE END Includes */
 
 /* Variables -----------------------------------------------------------------*/
