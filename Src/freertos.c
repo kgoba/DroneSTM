@@ -35,7 +35,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os.h"
-#include "gpio.h"
 
 /* USER CODE BEGIN Includes */     
 
@@ -46,15 +45,20 @@ osThreadId defaultTaskHandle;
 
 /* USER CODE BEGIN Variables */
 
+osThreadId secondTaskHandle;
+
 /* USER CODE END Variables */
 
 /* Function prototypes -------------------------------------------------------*/
 void StartDefaultTask(void const * argument);
 
 extern void MX_FATFS_Init(void);
+extern void MX_USB_DEVICE_Init(void);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* USER CODE BEGIN FunctionPrototypes */
+
+void StartSecondTask(void const * argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -86,6 +90,8 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  osThreadDef(secondTask, StartSecondTask, osPriorityNormal, 0, 128);
+  secondTaskHandle = osThreadCreate(osThread(secondTask), NULL);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
@@ -99,25 +105,40 @@ void StartDefaultTask(void const * argument)
   /* init code for FATFS */
   MX_FATFS_Init();
 
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
+
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
   int phase = 0;
   for(;;)
   {
     /* turn off current led and turn on the next one */
-    HAL_GPIO_WritePin(LD3_GPIO_Port, 1 << (8 + phase), GPIO_PIN_RESET);
-    phase++;
-    if (phase == 8) phase = 0;    
-    HAL_GPIO_WritePin(LD3_GPIO_Port, 1 << (8 + phase), GPIO_PIN_SET);
+    //HAL_GPIO_WritePin(LD3_GPIO_Port, 1 << (8 + phase), GPIO_PIN_RESET);
+    //phase++;
+    //if (phase == 8) phase = 0;    
+    //HAL_GPIO_WritePin(LD3_GPIO_Port, 1 << (8 + phase), GPIO_PIN_SET);
     /* toggle led */
-    //HAL_GPIO_TogglePin(LD3_GPIO_Port, (1 << 10) | (1 << 11));
+    HAL_GPIO_TogglePin(LD3_GPIO_Port, (1 << 12));
     /* delay */
-    osDelay(125);
+    osDelay(250);
   }
   /* USER CODE END StartDefaultTask */
 }
 
 /* USER CODE BEGIN Application */
+
+/* StartDefaultTask function */
+void StartSecondTask(void const * argument)
+{
+  /* Infinite loop */
+  for(;;)
+  {
+    /* toggle LED */
+    HAL_GPIO_TogglePin(LD3_GPIO_Port, GPIO_PIN_9);
+    osDelay(200);
+  }
+}
      
 /* USER CODE END Application */
 
