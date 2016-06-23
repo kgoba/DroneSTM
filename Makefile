@@ -26,8 +26,11 @@ CFLAGS  = -Wall -g -std=c99 -Os -D$(DEVICE)
 CFLAGS += -mlittle-endian -mcpu=cortex-m4  -march=armv7e-m -mthumb
 CFLAGS += -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 CFLAGS += -ffunction-sections -fdata-sections
+#CFLAGS += -ffreestanding -nostdlib
 
-LDFLAGS += -Wl,--gc-sections -Wl,-Map=$(PROJ_NAME).map
+LDFLAGS += -Wl,--gc-sections -Wl,-Map=$(PROJ_NAME).map 
+LDFLAGS += --specs=rdimon.specs
+#LDFLAGS += --specs=nosys.specs
 
 ###################################################
 
@@ -40,12 +43,14 @@ CFLAGS += -I $(STD_PERIPH_LIB)
 CFLAGS += -I $(STD_PERIPH_LIB)/CMSIS/Device/ST/STM32F3xx/Include
 CFLAGS += -I $(STD_PERIPH_LIB)/CMSIS/Include 
 CFLAGS += -I $(STD_PERIPH_LIB)/STM32F3xx_HAL_Driver/Inc
-#CFLAGS += -I $(STD_PERIPH_LIB)/STM32_USB-FS-Device_Driver/inc
+CFLAGS += -I $(STD_PERIPH_LIB)/STM32_USB-FS-Device_Driver/inc
 #CFLAGS += -include $(STD_PERIPH_LIB)/stm32f30x_conf.h
 CFLAGS += -I Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS
 CFLAGS += -I Middlewares/Third_Party/FreeRTOS/Source/include
 CFLAGS += -I Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F
 CFLAGS += -I Middlewares/Third_Party/FatFs/src
+CFLAGS += -I Middlewares/ST/STM32_USB_Device_Library/Core/Inc
+CFLAGS += -I Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
 
 #STARTUP = Device/startup_stm32f30x.s # add startup file to build
 STARTUP = Drivers/CMSIS/Device/ST/STM32F3xx/Source/Templates/gcc/startup_stm32f303xc.s
@@ -60,7 +65,10 @@ SRCS += Drivers/CMSIS/Device/ST/STM32F3xx/Source/Templates/system_stm32f3xx.c
 SRCS += $(wildcard Middlewares/Third_Party/FreeRTOS/Source/*.c) 
 SRCS += Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.c
 SRCS += Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
-SRCS += Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c
+SRCS += $(wildcard Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/*.c)
+
+SRCS += $(wildcard Middlewares/ST/STM32_USB_Device_Library/Core/Src/*.c)
+SRCS += $(wildcard Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src/*.c)
 
 SRCS += $(wildcard Middlewares/Third_Party/FatFs/src/*.c)
 SRCS += $(wildcard Middlewares/Third_Party/FatFs/src/option/*.c)

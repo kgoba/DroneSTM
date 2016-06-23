@@ -38,6 +38,7 @@
 
 /* USER CODE BEGIN Includes */     
 #include "gpio.h"
+#include "usbd_cdc_if.h"
 /* USER CODE END Includes */
 
 /* Variables -----------------------------------------------------------------*/
@@ -46,6 +47,7 @@ osThreadId defaultTaskHandle;
 /* USER CODE BEGIN Variables */
 
 osThreadId secondTaskHandle;
+extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* USER CODE END Variables */
 
@@ -132,11 +134,23 @@ void StartDefaultTask(void const * argument)
 void StartSecondTask(void const * argument)
 {
   /* Infinite loop */
+  //HAL_GPIO_WritePin(GSM_KEY_GPIO_Port, GSM_KEY_Pin, GPIO_PIN_SET);
+  //osDelay(2500);
+  //HAL_GPIO_WritePin(GSM_KEY_GPIO_Port, GSM_KEY_Pin, GPIO_PIN_RESET);
+  
   for(;;)
   {
     /* toggle LED */
     HAL_GPIO_TogglePin(LD3_GPIO_Port, GPIO_PIN_9);
-    osDelay(200);
+    char line[] = "Test\r\n";
+    uint8_t rc = CDC_Transmit_FS(line, sizeof(line) / sizeof(char));
+    if (rc == USBD_OK) {
+      //CDC_Transmit_FS("", 0);
+      osDelay(1000);
+    }
+    else {
+      osDelay(100);
+    }
   }
 }
      
