@@ -22,6 +22,13 @@ OBJCOPY=arm-none-eabi-objcopy
 OBJDUMP=arm-none-eabi-objdump
 SIZE=arm-none-eabi-size
 
+# STM32 F3/F4/L4 - cortex-m4 armv7e-m
+# STM32 F1/F2/L1 - cortex-m3 armv7-m
+# STM32 F0/L0    - cortex-m0/m0+ armv6-m
+
+CPU=cortex-m4
+ARCH=armv7e-m
+
 CFLAGS  = -Wall -g -std=c99 -Os -D$(DEVICE)
 CFLAGS += -mlittle-endian -mcpu=cortex-m4  -march=armv7e-m -mthumb
 CFLAGS += -mfpu=fpv4-sp-d16 -mfloat-abi=hard
