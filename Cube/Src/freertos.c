@@ -39,6 +39,8 @@
 /* USER CODE BEGIN Includes */     
 #include "gpio.h"
 #include "usbd_cdc_if.h"
+#include "config.h"
+#include "App/SIM808.hh"
 /* USER CODE END Includes */
 
 /* Variables -----------------------------------------------------------------*/
@@ -92,7 +94,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  osThreadDef(secondTask, StartSecondTask, osPriorityNormal, 0, 128);
+  osThreadDef(secondTask, SIM808_Task, osPriorityNormal, 0, 512);
   secondTaskHandle = osThreadCreate(osThread(secondTask), NULL);
   /* USER CODE END RTOS_THREADS */
 
@@ -112,7 +114,6 @@ void StartDefaultTask(void const * argument)
 
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
-  int phase = 0;
   for(;;)
   {
     /* turn off current led and turn on the next one */
@@ -123,37 +124,15 @@ void StartDefaultTask(void const * argument)
     /* toggle led */
     HAL_GPIO_TogglePin(LD3_GPIO_Port, (1 << 12));
     /* delay */
-    osDelay(250);
+    osDelay(1000);
+    
+    //serWriteString("AT\r\n");
   }
   /* USER CODE END StartDefaultTask */
 }
 
 /* USER CODE BEGIN Application */
-
-/* StartDefaultTask function */
-void StartSecondTask(void const * argument)
-{
-  /* Infinite loop */
-  //HAL_GPIO_WritePin(GSM_KEY_GPIO_Port, GSM_KEY_Pin, GPIO_PIN_SET);
-  //osDelay(2500);
-  //HAL_GPIO_WritePin(GSM_KEY_GPIO_Port, GSM_KEY_Pin, GPIO_PIN_RESET);
   
-  for(;;)
-  {
-    /* toggle LED */
-    HAL_GPIO_TogglePin(LD3_GPIO_Port, GPIO_PIN_9);
-    char line[] = "Test\r\n";
-    uint8_t rc = CDC_Transmit_FS(line, sizeof(line) / sizeof(char));
-    if (rc == USBD_OK) {
-      //CDC_Transmit_FS("", 0);
-      osDelay(1000);
-    }
-    else {
-      osDelay(100);
-    }
-  }
-}
-     
 /* USER CODE END Application */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
