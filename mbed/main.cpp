@@ -2,6 +2,11 @@
 #include "Adafruit_FONA.h"
 #include "rtos.h"
 
+#include "baro.h"
+
+const PinName I2CSDAPin = PB_7;
+const PinName I2CSCLPin = PB_6;
+
 #define SIM_PIN1        "2216"
 
 #define GPRS_APN        "internet.lmt.lv"
@@ -14,16 +19,20 @@
 #define PUBNUB_SERVER   "pubsub.pubnub.com"
 #define HTTP_USERAGENT  "Mozilla/4.0"
 
-Ticker flipper, flipper2;
 DigitalOut led1(LED3);
 DigitalOut led2(LED4);
 DigitalOut led3(LED5);
 DigitalOut led4(LED6);
 DigitalOut led5(LED7);
 DigitalIn  userButton(USER_BUTTON);
+
+PwmOut buzzer(PB_4);
  
 Serial dbg(PA_9, PA_10);
 Adafruit_FONA fona(PA_2, PA_3, PF_4, PA_0);
+
+I2C sensorBus(I2CSDAPin, I2CSCLPin);
+Barometer barometer(sensorBus);
 
 void led3_ticker() {
   led3 = userButton;
@@ -192,17 +201,9 @@ void publishLocation()
   publishData2("{\"abc\":5}");
 }
 
-int main() {
-    //led2 = 1;
-    //flipper.attach(&flip, 0.35); // the address of the function to be attached (flip) and the interval (2 seconds)
-    //flipper2.attach(&flip2, 0.25); // the address of the function to be attached (flip) and the interval (2 seconds)
-    //flipper.attach(&led3_ticker, 0.2);
 
-    dbg.baud(9600);
-    dbg.printf("Reset!\n");
-    
-    fona.begin(9600);
-
+void trackingTask() 
+{
     dbg.printf("Unlocking SIM...\n");
     fona.unlockSIM(SIM_PIN1);
         
@@ -253,5 +254,112 @@ int main() {
         dbg.printf("Sleeping...\n");
         Thread::wait(1000);
         //led2 = !led2;
+    }  
+}
+
+void varioTask() {
+    buzzer = 0;
+    buzzer.period(1.0f / 3000);
+    
+    //sensorBus.frequency(100000);
+    if (barometer.reset()) {
+      dbg.printf("Barometer reset!\n");
     }
+    else {
+      dbg.printf("Barometer not found!\n");
+    }
+    Thread::wait(50);
+    
+    if (!barometer.initialize()) {
+      dbg.printf("Failed to initialize!\n");
+    }
+    
+    int idx = 0;
+    float pFilt = 0;
+    float lastPressure = 0;
+    
+    // Calculate initial pressure by averaging measurements
+    while (idx < 50) {
+      if (barometer.update())
+      {
+        uint32_t pressure = barometer.getPressure();
+        pFilt += pressure;
+      }
+      idx++;
+    }
+    pFilt /= idx;
+    lastPressure = pFilt;
+
+    float dpPerMeter = 12.0f;
+    float dpFilt = 0;
+    float baroAvgTime = 0.350f;
+    float climbAvgTime = 0.350f;
+    float climbThreshold = 0.10f;
+    float sinkThreshold = -0.10f;
+    float dt = 0.015f;   // Approximate measurement interval in seconds
+
+    dbg.printf("Conversion in progress...\n");
+    idx = 0;
+    int period = 10;
+    bool phase = false;
+    while (true) {
+      if (barometer.update())
+      {
+        uint32_t pressure = barometer.getPressure();        
+        pFilt += (dt / baroAvgTime) * ((float)pressure - pFilt);     // Approx 33 Hz update rate
+      }
+      else {
+        dbg.printf("---\n");
+      }
+
+      float dp = (pFilt - lastPressure) / dt;
+      dpFilt += (dt / climbAvgTime) * (dp - dpFilt);  // Approx 3.3 Hz update rate
+      lastPressure = pFilt;
+      
+      if (idx >= period) {
+        //if (fabsf(vertSpeed) > 0.1f) {
+        //  dbg.printf("Vertical speed: % .1f\tPressure: %.0f\n", vertSpeed, pFilt);
+        //}
+        
+        float vertSpeed = -dpFilt / dpPerMeter;
+        if (vertSpeed > climbThreshold) {
+          float frequency = 440 + 220 * vertSpeed;
+          buzzer.period(1.0f / frequency);
+          period = 20 - 7 * vertSpeed;
+          if (period < 3) period = 3;
+          buzzer = phase ? 0.5f : 0;
+        }
+        else if (vertSpeed < sinkThreshold) {
+          //float frequency = 440 + 220 * vertSpeed;
+          //buzzer.period(1.0f / frequency);
+          //buzzer = 0.5f;
+          buzzer = 0;
+        }
+        else {
+          buzzer = 0;
+        }
+        
+        phase = !phase;
+        idx = 0;
+      }
+        
+      idx++;
+    }
+}
+
+Ticker flipper, flipper2;
+
+int main() {
+    //led2 = 1;
+    //flipper.attach(&flip, 0.35); // the address of the function to be attached (flip) and the interval (2 seconds)
+    //flipper2.attach(&flip2, 0.25); // the address of the function to be attached (flip) and the interval (2 seconds)
+    //flipper.attach(&led3_ticker, 0.2);
+
+    dbg.baud(9600);
+    dbg.printf("Reset!\n");
+
+    fona.begin(9600);
+    
+    varioTask(); 
+    //trackingTask();
 }
