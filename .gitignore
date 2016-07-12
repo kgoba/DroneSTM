@@ -14,8 +14,9 @@
 # Dependency files
 *.d
 
-# Source control files
+# Source control files and other normally hidden files
 .hg/
+.arch*
 
 # Libraries
 *.lib
