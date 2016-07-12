@@ -119,6 +119,9 @@ lst: $(PROJECT).lst
 size: $(PROJECT).elf
 	$(SIZE) $(PROJECT).elf
 
+flash: $(PROJECT).bin
+	st-flash --reset write ../.build/$(PROJECT).bin 0x08000000
+
 DEPS = $(OBJECTS:.o=.d) $(SYS_OBJECTS:.o=.d)
 -include $(DEPS)
 
