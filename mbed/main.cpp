@@ -24,6 +24,7 @@ DigitalOut led2(LED4);
 DigitalOut led3(LED5);
 DigitalOut led4(LED6);
 DigitalOut led5(LED7);
+DigitalOut led8(LED8);
 DigitalIn  userButton(USER_BUTTON);
 
 PwmOut buzzer(PB_4);
@@ -202,8 +203,10 @@ void publishLocation()
 }
 
 
-void trackingTask() 
+void trackingTask(void const *argument) 
 {
+    fona.begin(9600);
+
     dbg.printf("Unlocking SIM...\n");
     fona.unlockSIM(SIM_PIN1);
         
@@ -257,7 +260,7 @@ void trackingTask()
     }  
 }
 
-void varioTask() {
+void varioTask(void const *argument) {
     buzzer = 0;
     buzzer.period(1.0f / 3000);
     
@@ -349,6 +352,8 @@ void varioTask() {
 
 Ticker flipper, flipper2;
 
+#define STACK_SIZE DEFAULT_STACK_SIZE
+
 int main() {
     //led2 = 1;
     //flipper.attach(&flip, 0.35); // the address of the function to be attached (flip) and the interval (2 seconds)
@@ -358,8 +363,14 @@ int main() {
     dbg.baud(9600);
     dbg.printf("Reset!\n");
 
-    fona.begin(9600);
+    Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
+    Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
     
-    varioTask(); 
+    //varioTask(); 
     //trackingTask();
+    
+    while (true) {
+        led8 = !led8;
+        Thread::wait(500);
+    }
 }
