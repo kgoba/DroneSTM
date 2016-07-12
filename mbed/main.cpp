@@ -260,9 +260,302 @@ void trackingTask(void const *argument)
     }  
 }
 
+class SimpleTokenizer {
+public:
+  SimpleTokenizer(char *str, char delimiter) {
+    _str = str;
+    _del = delimiter;
+  }
+
+  char * next() {
+    if (_str == 0) return 0;
+    
+    char *result = _str;
+    char *nextPtr = strchr(_str, _del);
+    if (nextPtr == 0) {
+      _str = 0;
+    }
+    else {
+      _str = nextPtr;
+    }
+    return result;
+  }
+  
+private:
+  char *_str;
+  char  _del;
+};
+
+class BufString {
+public:
+  BufString(char *buffer, int bufSize, int length = 0) {
+    _buffer = buffer;
+    _capacity = bufSize;
+    _length = length;
+  }
+
+  BufString(char *string) {
+    _buffer = string;
+    _capacity = _length = strlen(string);
+  }
+  
+  BufString & operator += (const BufString &other) {
+    if (other._length + _length > _capacity) {
+      // overflow
+      //_length = -1;
+    }
+    else {
+      memcpy(_buffer + _length, other._buffer, other._length);
+    }
+  }
+
+  BufString & operator += (const char c) {
+    if (1 + _length > _capacity) {
+      // overflow
+      //_length = -1;
+    }
+    else {
+      _buffer[_length] = c;
+      _length++;
+    }
+  }
+  
+  BufString & operator += (const int n) {
+    if (8 + _length > _capacity) {
+      // overflow
+      //_length = -1;
+    }
+    else {
+      int rc = sprintf(_buffer + _length, "%d", n);
+      if (rc > 0) {
+        _length += rc;
+      }
+    }
+  }
+  
+  BufString & operator += (const float n) {
+    if (8 + _length > _capacity) {
+      // overflow
+      //_length = -1;
+    }
+    else {
+      int rc = sprintf(_buffer + _length, "%f", n);
+      if (rc > 0) {
+        _length += rc;
+      }
+    }
+  }
+  
+private:
+  char *  _buffer;
+  int  _capacity;
+  int  _length;
+};
+
+class TK102Packet {
+public:
+  TK102Packet();
+  
+  char  datetime[12];        // 160711201120
+  char  allowedNumber[20];   // 29319915175061207 (empty here)
+  
+  // GPRMC,201120.000,A,5657.5108,N,02410.6618,E,0.00,67.76,110716,,,A*5D
+  char  gpsTime[10];
+  float latitude;
+  float longitude;
+  float speedKnots;
+  float course;
+  char  gpsDate[6];
+  
+  char  fix;                 // (F)ix / (L)ast
+  char  status[8];           // START
+  char  imei[16];            // 123456789012345
+  int   satCount;            // 10
+  float altitude;           // 12.4
+  char  batteryStatus;      // (F)ull / (L)ow
+  float batteryVoltage;     // 4.24
+  int   lastPacketSize;     // 160
+  char  mcc[5];
+  char  mnc[5];
+  char  lac[8];
+  char  cellID[6];
+
+  bool update(char *str);
+  void buildPacket(char *buf, int bufSize);
+
+private:
+
+};
+
+ TK102Packet::TK102Packet() {
+    datetime[0] = '\0';
+    allowedNumber[0] = '\0';
+    gpsTime[0] = '\0';
+    gpsDate[0] = '\0';
+    status[0] = '\0';
+    imei[0] = '\0';
+    mcc[0] = '\0';
+    mnc[0] = '\0';
+    lac[0] = '\0';
+    cellID[0] = '\0';
+  }
+
+void TK102Packet::buildPacket(char *buf, int bufSize)
+{
+  float latitudeAbs = fabsf(latitude);
+  float latitudeDeg = floorf(latitudeAbs);
+  float latitudeMin = 60 * (latitudeAbs - latitudeDeg);
+  char latitudeSign = (latitude >= 0) ? 'N' : 'S';
+
+  float longitudeAbs = fabsf(longitude);
+  float longitudeDeg = floorf(longitudeAbs);
+  float longitudeMin = 60 * (longitudeAbs - longitudeDeg);
+  char longitudeSign = (longitude >= 0) ? 'E' : 'W';
+  
+  uint8_t nmeaChecksum = 0;
+  uint16_t checksum = 0;
+  
+  snprintf(buf, bufSize, 
+    "%.12s,%.20s,"  
+    "GPRMC,%.10s,A,%02.0f%02.4f,%c,%03.0f%02.4f,%c,"  
+    "%.1f,%.1f,%.6s,%s,%s,A*%02x," 
+    "%c,%.8s,%.16s,%d,%.1f,%c%.2f"  
+    "%d%d%s%s%s%s",
+    datetime, allowedNumber, 
+    gpsTime, latitudeDeg, latitudeMin, latitudeSign, longitudeDeg, longitudeMin, longitudeSign,
+    speedKnots, course, gpsDate, "", "", nmeaChecksum,
+    fix, status, imei, satCount, altitude, batteryStatus, batteryVoltage, 
+    lastPacketSize, checksum, mcc, mnc, lac, cellID
+  );
+}
+
+bool TK102Packet::update(char *str) {
+  SimpleTokenizer tokenizer(str, ',');
+  char *tok;
+  
+  // <GNSS run status>,     1   0-1
+  tok = tokenizer.next();
+  if (! tok) return false;
+  
+  // <Fix status>,          1   0-1
+  tok = tokenizer.next();
+  if (! tok) return false;
+  if (strcmp(tok, "1") == 0) {
+    fix = 'F';
+  }
+  else {
+    fix = 'L';
+  }
+  
+  // <UTC date & Time>,     18  yyyyMMddhhmmss.sss
+  tok = tokenizer.next();
+  if (! tok) return false;  
+  if (strlen(tok) < 14) return false;
+  memcpy(datetime, tok + 2, 12);    // Convert to yyMMddhhmmss
+  memcpy(gpsDate, tok + 2, 6);      // Convert to yyMMdd
+  memcpy(gpsTime, tok + 8, strlen(tok) - 8);     // Convert to hhmmss[.sss]
+  
+  // <Latitude>,            10  +dd.dddddd
+  tok = tokenizer.next();
+  if (! tok) return false;
+  sscanf(tok, "%f", &latitude);
+  
+  // <Longitude>,           11  +ddd.dddddd
+  tok = tokenizer.next();
+  if (! tok) return false;
+  sscanf(tok, "%f", &longitude);
+  
+  // <MSL Altitude>,        8
+  tok = tokenizer.next();
+  if (! tok) return false;
+  sscanf(tok, "%f", &altitude);  
+
+  // <Speed Over Ground>,   6
+  tok = tokenizer.next();
+  if (! tok) return false;
+  float speedKMH;
+  sscanf(tok, "%f", &speedKMH);    
+  speedKnots = speedKMH / 1.852;    // Convert km/h to knots
+  
+  // <Course Over Ground>,  6
+  tok = tokenizer.next();
+  if (! tok) return false;
+  sscanf(tok, "%f", &course);  
+  
+  // Skip 7 fields
+  for (int index = 0; index < 7; index++) {
+    tok = tokenizer.next();
+    if (! tok) return false;
+  }
+  
+  // <GNSS Satellites Used>
+  tok = tokenizer.next();
+  if (! tok) return false;
+  sscanf(tok, "%d", &satCount);  
+  
+  return true;
+}
+
+struct GPSInfo {
+  
+  //bool getGPSOn() { return substr(0, 1); };
+  
+public:
+  char rawString[95];
+};
+
+/*
+ * getGPS() response: 
+ * 
+ *  <GNSS run status>,    1   0-1
+ * <Fix status>,          1   0-1
+ * <UTC date & Time>,     18  yyyyMMddhhmmss.sss
+ * <Latitude>,            10  +dd.dddddd
+ * <Longitude>,           11  +ddd.dddddd
+ * <MSL Altitude>,        8
+ * <Speed Over Ground>,   6
+ * <Course Over Ground>,  6
+ *  <Fix Mode>,
+ *  <Reserved1>,
+ *  <HDOP>,
+ *  <PDOP>,
+ *  <VDOP>,
+ *  <Reserved2>,
+ *  <GNSS Satellites in View>, 
+ * <GNSS Satellites Used>, 
+ *  <GLONASS Satellites Used>,
+ *  <Reserved3>,
+ *  <C/N0 max>,
+ *  <HPA>,
+ *  <VPA> 
+ */
+
+    volatile float pFilt = 0;
+    volatile float lastPressure = 0;
+    volatile float dpFilt = 0;
+
+    float dpPerMeter = 12.0f;
+    float baroAvgTime = 0.400f;
+    float climbAvgTime = 0.400f;
+    float climbThreshold = 0.10f;
+    float sinkThreshold = -0.10f;
+    float dt = 0.020f;   // Approximate measurement interval in seconds
+
+void varioMeasure(void const *argument) {
+  if (barometer.update())
+  {
+    float pressure = barometer.getPressure();        
+    pFilt += (dt / baroAvgTime) * ((float)pressure - pFilt);     // Approx 33 Hz update rate
+  }
+
+  float dp = (pFilt - lastPressure) / dt;
+  dpFilt += (dt / climbAvgTime) * (dp - dpFilt); 
+  
+  lastPressure = pFilt;
+}
+
 void varioTask(void const *argument) {
     buzzer = 0;
-    buzzer.period(1.0f / 3000);
     
     //sensorBus.frequency(100000);
     if (barometer.reset()) {
@@ -278,14 +571,13 @@ void varioTask(void const *argument) {
     }
     
     int idx = 0;
-    float pFilt = 0;
-    float lastPressure = 0;
+
     
     // Calculate initial pressure by averaging measurements
     while (idx < 50) {
       if (barometer.update())
       {
-        uint32_t pressure = barometer.getPressure();
+        float pressure = barometer.getPressure();
         pFilt += pressure;
       }
       idx++;
@@ -293,32 +585,14 @@ void varioTask(void const *argument) {
     pFilt /= idx;
     lastPressure = pFilt;
 
-    float dpPerMeter = 12.0f;
-    float dpFilt = 0;
-    float baroAvgTime = 0.350f;
-    float climbAvgTime = 0.350f;
-    float climbThreshold = 0.10f;
-    float sinkThreshold = -0.10f;
-    float dt = 0.015f;   // Approximate measurement interval in seconds
+    RtosTimer measureTimer(varioMeasure, osTimerPeriodic, NULL);  
+    measureTimer.start(20);
 
     dbg.printf("Conversion in progress...\n");
     idx = 0;
     int period = 10;
     bool phase = false;
     while (true) {
-      if (barometer.update())
-      {
-        uint32_t pressure = barometer.getPressure();        
-        pFilt += (dt / baroAvgTime) * ((float)pressure - pFilt);     // Approx 33 Hz update rate
-      }
-      else {
-        dbg.printf("---\n");
-      }
-
-      float dp = (pFilt - lastPressure) / dt;
-      dpFilt += (dt / climbAvgTime) * (dp - dpFilt);  // Approx 3.3 Hz update rate
-      lastPressure = pFilt;
-      
       if (idx >= period) {
         //if (fabsf(vertSpeed) > 0.1f) {
         //  dbg.printf("Vertical speed: % .1f\tPressure: %.0f\n", vertSpeed, pFilt);
@@ -347,29 +621,26 @@ void varioTask(void const *argument) {
       }
         
       idx++;
+      Thread::wait(15);
     }
 }
 
-Ticker flipper, flipper2;
-
 #define STACK_SIZE DEFAULT_STACK_SIZE
 
-int main() {
-    //led2 = 1;
-    //flipper.attach(&flip, 0.35); // the address of the function to be attached (flip) and the interval (2 seconds)
-    //flipper2.attach(&flip2, 0.25); // the address of the function to be attached (flip) and the interval (2 seconds)
-    //flipper.attach(&led3_ticker, 0.2);
-
+int main() 
+{
     dbg.baud(9600);
     dbg.printf("Reset!\n");
 
     Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
     Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
-    
+        
     //varioTask(); 
     //trackingTask();
     
-    while (true) {
+    while (true) 
+    {
+        // Just toggle LED to indicate the main (idle) loop
         led8 = !led8;
         Thread::wait(500);
     }
