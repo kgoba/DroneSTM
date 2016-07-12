@@ -17,6 +17,7 @@
 # Source control files and other normally hidden files
 .hg/
 .arch*
+.build/
 
 # Libraries
 *.lib
