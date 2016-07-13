@@ -21,6 +21,9 @@
 #include <algorithm>
 #include "Adafruit_FONA.h"
 
+#define TIMEOUT_LONG 30000
+#define TIMEOUT_SHORT 5000
+
 #define HIGH 1
 #define LOW 0
 
@@ -765,6 +768,52 @@ bool Adafruit_FONA::enableGPSNMEA(uint8_t i) {
 
 
 /********* GPRS **********************************************************/
+
+
+bool Adafruit_FONA::enableTCPGPRS(bool onoff)
+{
+    uint16_t reply;
+    if (onoff) {
+        // disconnect all sockets
+        sendCheckReply("AT+CIPSHUT", "SHUT OK", TIMEOUT_SHORT);
+        
+        sendCheckReply("AT+CGATT=1", "OK", 10000);
+        //if (! sendCheckReply("AT+CGATT=1", "OK", 10000))
+        //    return false;
+        
+        /*
+        if (! sendParseReply("AT+CGATT?", "+CGATT:", &reply)) {
+            //FONA_PRINT("[On ine Numeber %3d]\r\n", __LINE__);           
+            return false;
+        }
+        */
+              
+        if (! sendCheckReplyQuoted("AT+CSTT=",apn, "OK", 10000)) {
+            //FONA_PRINT("[On ine Numeber %3d]\r\n", __LINE__);
+            return false;
+        }
+        
+        if (! sendCheckReply("AT+CIICR", "OK", 10000)) {
+            //FONA_PRINT("[On ine Numeber %3d]\r\n", __LINE__);
+            return false;
+        }
+    
+        getReply("AT+CIFSR");
+        //sendCheckReply("AT+CIFSR", "", TIMEOUT_SHORT);
+    } 
+    else {
+        // disconnect all sockets
+        
+        if (! sendCheckReply("AT+CIPSHUT", "SHUT OK", TIMEOUT_SHORT)) {
+            //FONA_PRINT("[On ine Numeber %3d]\r\n", __LINE__);
+            return false;
+        }       
+        
+        //if (! sendCheckReply("AT+CGATT=0", "OK", 10000))
+        //return false;
+    }
+    return true;
+}
 
 
 bool Adafruit_FONA::enableGPRS(bool onoff) {

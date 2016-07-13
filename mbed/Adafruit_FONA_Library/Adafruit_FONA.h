@@ -130,6 +130,7 @@ class Adafruit_FONA : public Stream {
         bool getTime(char* buff, uint16_t maxlen);
         
         // GPRS handling
+        bool enableTCPGPRS(bool onoff);
         bool enableGPRS(bool onoff);
         uint8_t GPRSstate(void);
         bool getGSMLoc(uint16_t *replycode, char *buff, uint16_t maxlen);
