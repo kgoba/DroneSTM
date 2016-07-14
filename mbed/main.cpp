@@ -1,6 +1,7 @@
 #include "mbed.h"
 #include "rtos.h"
-#include "SDFileSystem.h"
+//#include "SDFileSystem.h"
+#include "ff.h"
 
 #include "Adafruit_FONA.h"
 #include "gpsdata.h"
@@ -189,18 +190,36 @@ void varioTask(void const *argument) {
     }
 }
 
-/*
-void testTask(void const *argument) {
+void testTask1(void const *argument) {
   FILE *fp = fopen("/sd/myfile.txt", "w");
   fprintf(fp, "Hello World!\n");
   fclose(fp);
   
-  while (true) {
-    Thread::yield();
-    Thread::wait(1000);
-  }
+  Thread::wait(osWaitForever);
 }
-*/
+
+void testTask2(void const *argument) {
+  FATFS fs;
+  FIL fp;
+  FRESULT fr;
+
+  // Mount filesystem
+  fr = f_mount(&fs, "", 0);
+  
+  // Open file for writing
+  fr = f_open(&fp, "myfile.txt", FA_CREATE_NEW);
+  if (!fr) {
+    // Write single line and close the file
+    f_puts("Hello World!\n", &fp);
+    fr = f_close(&fp);
+  }
+  
+  // Unmount filesystem
+  fr = f_mount(NULL, "", 0);
+  
+  Thread::wait(osWaitForever);
+}
+
 
 #define STACK_SIZE DEFAULT_STACK_SIZE
 
