@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #include <string.h>
+#include "rtos.h"
 #include "ff.h"
 #include "FATDirHandle.h"
 

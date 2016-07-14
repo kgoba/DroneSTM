@@ -1,6 +1,6 @@
 #include "mbed.h"
 #include "rtos.h"
-//#include "SDFileSystem.h"
+#include "SDFileSystem.h"
 #include "ff.h"
 
 #include "Adafruit_FONA.h"
@@ -204,13 +204,20 @@ void testTask2(void const *argument) {
   FRESULT fr;
 
   // Mount filesystem
-  fr = f_mount(&fs, "", 0);
+  fr = f_mount(&fs, "", 1);
   
+  while (!userButton) 
+  {
+    Thread::wait(100);
+  }
   // Open file for writing
   fr = f_open(&fp, "myfile.txt", FA_CREATE_NEW);
   if (!fr) {
     // Write single line and close the file
-    f_puts("Hello World!\n", &fp);
+    char str[] = "Hello World!\n";
+    //f_puts(str, &fp);
+    UINT bw;
+    f_write (&fp, (const void*) str, strlen(str), &bw);
     fr = f_close(&fp);
   }
   
@@ -234,8 +241,8 @@ int main()
     ledTimer.start(250);
 
     //Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
-    Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
-    //Thread testThread(testTask, NULL, osPriorityNormal, 6000);
+    //Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
+    Thread testThread(testTask2, NULL, osPriorityNormal, 6000);
         
     //varioTask(); 
     //trackingTask();

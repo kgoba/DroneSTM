@@ -20,6 +20,7 @@
 #define _FATFS	64180	/* Revision ID */
 
 #ifdef __cplusplus
+#include "rtos.h"
 extern "C" {
 #endif
 

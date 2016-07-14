@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "rtos.h"
 #include "SDFileSystem.h"
 #include "diskio.h"
 #include "pinmap.h"

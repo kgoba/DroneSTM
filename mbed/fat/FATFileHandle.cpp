@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include "rtos.h"
 #include "ff.h"
 #include "ffconf.h"
 #include "mbed_debug.h"

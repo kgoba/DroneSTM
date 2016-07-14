@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #include "mbed.h"
+#include "rtos.h"
 
 #include "ffconf.h"
 #include "mbed_debug.h"
