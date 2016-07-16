@@ -1,12 +1,17 @@
 #include <stdint.h>
 
+#include "Adafruit_FONA.h"
+
 class TK102Packet {
 public:
   /// Initialize with reasonable defaults
-  TK102Packet();
+  TK102Packet(char *imei = 0);
+  
+  void setIMEI(char *imei);
   
   /// Update packet fields from GPSINF data 
   bool update(char *str);
+  bool update(Adafruit_FONA &fona);
   
   /// Build TK102 sentence (packet)
   void buildPacket(char *buf, int bufSize);
@@ -29,6 +34,7 @@ public:
   float altitude;           // 12.4
   char  batteryStatus;      // (F)ull / (L)ow
   float batteryVoltage;     // 4.24
+  bool  externalPower;
   int   lastPacketSize;     // 160
   
   // GSM cell information used for location
@@ -39,4 +45,5 @@ public:
 
 private:
 
+  uint8_t getNMEAChecksum(char *nmea);
 };

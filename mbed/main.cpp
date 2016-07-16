@@ -3,11 +3,13 @@
 #include "SDFileSystem.h"
 #include "ff.h"
 
+#include "debug.h"
 #include "Adafruit_FONA.h"
 #include "gpsdata.h"
 #include "pubnub.h"
 #include "vario.h"
 #include "baro.h"
+#include "crc.h"
 
 const PinName I2CSDAPin = PB_7;
 const PinName I2CSCLPin = PB_6;
@@ -33,8 +35,7 @@ DigitalOut led8(LED8);
 DigitalIn  userButton(USER_BUTTON);
 
 PwmOut buzzer(PB_4);
- 
-Serial dbg(PA_9, PA_10);
+
 Adafruit_FONA fona(PA_2, PA_3, PF_4, PA_0);
 
 I2C sensorBus(I2CSDAPin, I2CSCLPin);
@@ -44,6 +45,9 @@ Variometer vario;
 //SDFileSystem sd(SD_MOSI, SD_MISO, SD_SCK, SD_NSS, "sd");
 
 void publishLocation(Adafruit_FONA &fona);
+void publishLocation2(Adafruit_FONA &fona);
+
+TK102Packet packet;
 
 volatile int  gpsStatus = 0;
 volatile int  gprsStatus = 0;
@@ -74,11 +78,21 @@ void ledTimerTask(void const *argument) {
 
 void trackingTask(void const *argument) 
 {
+    CRC16<0xa001, true> crc;
+    uint16_t crcValue = crc.update("123456789");
+    dbg.printf("CRC check value: %04x\n", crcValue);
+  
     fona.begin(9600);
+
+    char imei[16];
+    if (fona.getIMEI(imei)) {
+      dbg.printf("IMEI: %.16s\n", imei);
+      packet.setIMEI(imei);
+    }
 
     dbg.printf("Unlocking SIM...\n");
     fona.unlockSIM(SIM_PIN1);
-        
+            
     dbg.printf("Enabling GPS...\n");
     fona.enableGPS(true);
     
@@ -97,12 +111,12 @@ void trackingTask(void const *argument)
         if (userButton) 
         {
           led4 = 1;
-          publishLocation(fona);
+          publishLocation2(fona);
           Thread::wait(1000);
           led4 = 0;
         }
 
-        dbg.printf("Sleeping...\n");
+        //dbg.printf("Sleeping...\n");
         Thread::wait(3000);
     }  
 }
@@ -241,8 +255,8 @@ int main()
     ledTimer.start(250);
 
     //Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
-    //Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
-    Thread testThread(testTask2, NULL, osPriorityNormal, 6000);
+    Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
+    //Thread testThread(testTask2, NULL, osPriorityNormal, 6000);
         
     //varioTask(); 
     //trackingTask();
@@ -458,4 +472,21 @@ void publishLocation(Adafruit_FONA &fona)
       led5 = 0;
     }
   }
+}
+
+void publishLocation2(Adafruit_FONA &fona) 
+{
+  char data[180];
+  int nChars = fona.getGPS(0, data, 180);
+  
+  if (nChars == 0) {
+    return;
+  }
+
+  dbg.printf("GPS  : %s\n", data);
+  
+  packet.update(data);
+  packet.buildPacket(data, 180);
+  
+  dbg.printf("TK102: %s\n", data);
 }
