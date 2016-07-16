@@ -85,6 +85,10 @@
 #define LD6_GPIO_Port GPIOE
 #define SD_CDET_Pin GPIO_PIN_9
 #define SD_CDET_GPIO_Port GPIOC
+#define DBG_TX_Pin GPIO_PIN_9
+#define DBG_TX_GPIO_Port GPIOA
+#define DBG_RX_Pin GPIO_PIN_10
+#define DBG_RX_GPIO_Port GPIOA
 #define DM_Pin GPIO_PIN_11
 #define DM_GPIO_Port GPIOA
 #define DP_Pin GPIO_PIN_12

@@ -123,7 +123,7 @@ flash: $(BIN)
 	
 $(BIN): main.out
 	@$(OBJCOPY) $(OBJCOPYFLAGS) main.out $(BIN)
-	@$(OBJDUMP) $(OBJDUMPFLAGS) main.out > main.list
+	@$(OBJDUMP) $(OBJDUMPFLAGS) main.out > main.lst
 	@$(SIZE) main.out
 	@echo Make finished
 

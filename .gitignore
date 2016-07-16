@@ -44,3 +44,10 @@
 *.su
 
 .DS_Store
+.project*
+.cproject*
+.mxproject
+.settings/
+.metadata/
+
+.depend
