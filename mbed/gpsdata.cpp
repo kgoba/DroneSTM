@@ -167,19 +167,22 @@ void TK102Packet::buildPacket(char *buf, int bufSize)
     speedKnots, course, gpsDate, "", ""
   );
   uint8_t nmeaChecksum = getNMEAChecksum(nmea);
-  CRC16<0xA001, true> crc;
-  uint16_t checksum = crc.update(nmea);
   
-  snprintf(buf, bufSize, 
-    "%.12s,%.20s,%s*%02x," 
-    "%c,%.8s,imei:%.16s,%d,%.1f,"
-    "%c:%.2fV,%c,"
-    "%d,%d,%s,%s,%s,%s",
-    datetime, allowedNumber, nmea, nmeaChecksum,
-    fix, status, imei, satCount, altitude, 
-    batteryStatus, batteryVoltage, externalPower ? '1' : '0',
-    lastPacketSize, checksum, mcc, mnc, lac, cellID
-  );
+	uint16_t packetSize = snprintf(buf, bufSize, 
+		"%.12s,%.20s,%s*%02X," 
+		"%c,%.8s,imei:%.16s,%d,%.1f,"
+		"%c:%.2fV,%c",
+		datetime, allowedNumber, nmea, nmeaChecksum,
+		fix, status, imei, satCount, altitude, 
+		batteryStatus, batteryVoltage, externalPower ? '1' : '0'
+	);
+ 
+	CRC16<0xA001, true> crc;
+	uint16_t checksum = crc.update(buf);
+
+	snprintf(buf + packetSize, bufSize - packetSize, 
+		",%d,%d,%s,%s,%s,%s", packetSize, checksum, mcc, mnc, lac, cellID
+	);
 }
 
 
@@ -232,7 +235,10 @@ bool TK102Packet::update(char *str) {
   if (! tok) return false;  
   if (strlen(tok) < 14) return false;
   memcpy(datetime, tok + 2, 12);    // Convert to yyMMddhhmmss
-  memcpy(gpsDate, tok + 2, 6);      // Convert to yyMMdd
+  // Convert to ddMMyy
+  memcpy(gpsDate, tok + 6, 2);     	// Copy dd
+  memcpy(gpsDate + 2, tok + 4, 2); 	// Copy MM
+  memcpy(gpsDate + 4, tok + 2, 2); 	// Copy yy
   memcpy(gpsTime, tok + 8, strlen(tok) - 8);     // Convert to hhmmss[.sss]
   
   // <Latitude>,            10  +dd.dddddd
@@ -288,5 +294,6 @@ bool TK102Packet::update(Adafruit_FONA &fona) {
   
   char gpsStatus[120];
   fona.getGPS(0, gpsStatus, 120);
+  dbg.printf("GPS  : %s\n", gpsStatus);
   return update(gpsStatus);
 }

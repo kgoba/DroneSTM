@@ -26,12 +26,15 @@ const PinName SD_NSS    = PD_1;
 #define GPRS_PASS       ""
 #define HTTP_USERAGENT  "Mozilla/4.0"
 
-DigitalOut led1(LED3);
-DigitalOut led2(LED4);
-DigitalOut led3(LED5);
-DigitalOut led4(LED6);
-DigitalOut led5(LED7);
-DigitalOut led8(LED8);
+#define TRACK_SERVER	"sns.lv"
+#define TRACK_PORT		9007
+
+DigitalOut led1(LED3);		// red		indicates GPRS connection status
+DigitalOut led2(LED4);		// blue		indicates GPS lock
+DigitalOut led3(LED5);		// orange	indicated GSM status
+DigitalOut led4(LED6);		// green
+DigitalOut led5(LED7);		// green
+DigitalOut led6(LED8);		// orange
 DigitalIn  userButton(USER_BUTTON);
 
 PwmOut buzzer(PB_4);
@@ -40,12 +43,13 @@ Adafruit_FONA fona(PA_2, PA_3, PF_4, PA_0);
 
 I2C sensorBus(I2CSDAPin, I2CSCLPin);
 Barometer barometer(sensorBus);
-Variometer vario;
+
+//Variometer vario;
 
 //SDFileSystem sd(SD_MOSI, SD_MISO, SD_SCK, SD_NSS, "sd");
 
-void publishLocation(Adafruit_FONA &fona);
-void publishLocation2(Adafruit_FONA &fona);
+bool publishLocation(Adafruit_FONA &fona);
+bool publishLocation2(Adafruit_FONA &fona);
 
 TK102Packet packet;
 
@@ -60,13 +64,13 @@ void ledTimerTask(void const *argument) {
   static bool isOn = false;
   
   if (!isOn) {
-    led1 = (gpsCounter < 0) ? 1 : 0;
-    led2 = (gprsCounter < 0) ? 1 : 0;
+    led2 = (gpsCounter < 0) ? 1 : 0;
+    led1 = (gprsCounter < 0) ? 1 : 0;
     led3 = (netCounter < 0) ? 1 : 0;
   }
   else {
-    led1 = (gpsCounter < 0)  ? 1 : (gpsCounter < gpsStatus);
-    led2 = (gprsCounter < 0) ? 1 : (gprsCounter < gprsStatus);
+    led2 = (gpsCounter < 0)  ? 1 : (gpsCounter < gpsStatus);
+    led1 = (gprsCounter < 0) ? 1 : (gprsCounter < gprsStatus);
     led3 = (netCounter < 0)  ? 1 : (netCounter < networkStatus);
     
     if (++gpsCounter > 4) gpsCounter = 0;
@@ -76,8 +80,32 @@ void ledTimerTask(void const *argument) {
   isOn = !isOn;
 }
 
+void beepTimes(uint8_t times) {
+	int frequency = 880;
+	buzzer.period(1.0f / frequency);
+	for (; times > 0; times--) {
+		buzzer = 0.2f;
+		Thread::wait(100);
+		buzzer = 0;
+		if (times > 1) {
+			Thread::wait(400);
+		}
+	}
+}
+
+void beepSuccess(bool success) {
+	int frequency1 = 440;
+	int frequency2 = 660;
+	buzzer.period(1.0f / (success ? frequency1 : frequency2));
+	buzzer = 0.5f;
+	Thread::wait(success ? 200 : 100);
+	buzzer.period(1.0f / (success ? frequency2 : frequency1));
+	Thread::wait(success ? 100 : 400);
+	buzzer = 0;
+}
+
 void trackingTask(void const *argument) 
-{
+{	
     CRC16<0xa001, true> crc;
     uint16_t crcValue = crc.update("123456789");
     dbg.printf("CRC check value: %04x\n", crcValue);
@@ -99,109 +127,48 @@ void trackingTask(void const *argument)
     dbg.printf("Enabling GPRS...\n");
     fona.enableTCPGPRS(false);
     fona.setGPRSNetworkSettings(GPRS_APN, GPRS_USER, GPRS_PASS);
-    gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0;
-       
-    dbg.printf("Entering loop...\n");
+    gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0; 
     
+    dbg.printf("Entering loop...\n");
     while(1) {
         networkStatus = fona.getNetworkStatus();
-        gpsStatus = fona.GPSstatus();
+        int newGPSStatus = fona.GPSstatus();
+        if (newGPSStatus != gpsStatus) {
+			gpsStatus = newGPSStatus;
+			dbg.printf("GPS status: %d\n", gpsStatus);
+			uint8_t times = (gpsStatus > 3) ? 3 : gpsStatus;
+			beepTimes(times);
+		}
         gprsStatus = fona.GPRSstate();
         
-        if (userButton) 
+        if (!fona.TCPconnected()) {
+			dbg.printf("Establishing TCP/IP connection...");
+			bool success = fona.TCPconnect(TRACK_SERVER, TRACK_PORT);
+			dbg.printf(success ? "SUCCESS\n" : "FAILED\n");
+   		}
+        
+        //if (userButton) 
+        if (gpsStatus == 3) 
         {
-          led4 = 1;
-          publishLocation2(fona);
-          Thread::wait(1000);
-          led4 = 0;
+			dbg.printf("Publishing location...");
+			led4 = 1;
+			bool success = publishLocation2(fona);
+			beepSuccess(success);
+			if (success) {
+				dbg.printf("SUCCESS\n");
+				led5 = 1;
+			}
+			else {
+				dbg.printf("FAILED\n");
+				led5 = 0;
+			}          
+			Thread::wait(1000);
+			led4 = 0;
         }
 
         //dbg.printf("Sleeping...\n");
         Thread::wait(3000);
     }  
-}
-
-void varioMeasure(void const *argument) {
-  static float lastPressure = 0;
-  const float dt = 0.020;
-  
-  if (barometer.update())
-  {
-    float pressure = barometer.getPressure();
-    vario.update(pressure, dt);
-    lastPressure = pressure;
-  }
-  else vario.update(lastPressure, dt);
-}
-
-float climbThreshold = 0.10f;
-float sinkThreshold = -0.10f;
-
-void varioTask(void const *argument) {    
-    //sensorBus.frequency(100000);
-    if (barometer.reset()) {
-      dbg.printf("Barometer reset!\n");
-    }
-    else {
-      dbg.printf("Barometer not found!\n");
-    }
-    Thread::wait(50);
-    
-    if (!barometer.initialize()) {
-      dbg.printf("Failed to initialize!\n");
-    }
-    
-    // Calculate initial pressure by averaging measurements
-    int idx = 0;
-    float avgPressure = 0;
-    while (idx < 50) {
-      if (barometer.update()) {
-        avgPressure += barometer.getPressure();
-        idx++;
-      }
-    }
-    avgPressure /= idx;
-    vario.reset(avgPressure);
-
-    // Start vario update timer
-    RtosTimer measureTimer(varioMeasure, osTimerPeriodic, NULL);  
-    measureTimer.start(20);
-
-    // Keep checking vertical speed
-    idx = 0;
-    int period = 10;
-    bool phase = false;
-    while (true) {
-      if (idx >= period) {
-        //if (fabsf(vertSpeed) > 0.1f) {
-        //  dbg.printf("Vertical speed: % .1f\tPressure: %.0f\n", vertSpeed, pFilt);
-        //}
-        
-        float vertSpeed = vario.getVerticalSpeed();
-        if (vertSpeed > climbThreshold) {
-          float frequency = 440 + 220 * vertSpeed;
-          buzzer.period(1.0f / frequency);
-          period = 20 - 7 * vertSpeed;
-          if (period < 3) period = 3;
-          buzzer = phase ? 0.5f : 0;
-        }
-        else if (vertSpeed < sinkThreshold) {
-          //float frequency = 440 + 220 * vertSpeed;
-          //buzzer.period(1.0f / frequency);
-          //buzzer = 0.5f;
-          buzzer = 0;
-        }
-        else {
-          buzzer = 0;
-        }
-        
-        phase = !phase;
-        idx = 0;
-      }
-        
-      idx++;
-      Thread::wait(15);
-    }
 }
 
 void testTask1(void const *argument) {
@@ -276,7 +243,7 @@ int main()
     while (true) 
     {
         // Just toggle LED to indicate the main (idle) loop
-        led8 = !led8;
+        //led8 = !led8;
         Thread::wait(500);
     }
 }
@@ -401,13 +368,13 @@ bool publishData2(Adafruit_FONA &fona, char *data) {
 
 char publishStr[120];
 
-void publishLocation(Adafruit_FONA &fona) 
+bool publishLocation(Adafruit_FONA &fona) 
 {
   char data[120];
   int nChars = fona.getGPS(0, data, 120);
   
   if (nChars == 0) {
-    return;
+    return false;
   }
 
   char *latitude = "\"\"";
@@ -441,7 +408,7 @@ void publishLocation(Adafruit_FONA &fona)
     index++;
   }
   
-  if (latitude == 0 || longitude == 0) return;
+  if (latitude == 0 || longitude == 0) return false;
   
   bool validLocation = false;
   strcpy(publishStr, "{");
@@ -460,33 +427,20 @@ void publishLocation(Adafruit_FONA &fona)
 
   if (validLocation) {
     bool success = publishData(fona, publishStr);
-    if (success) {
-      led5 = 1;
-      //Thread::wait(500);
-      //led5 = 0;
-    }
-    else {
-      dbg.printf("Connection error\n");
-      //led5 = 1;
-      //Thread::wait(100);
-      led5 = 0;
-    }
+    return success;
   }
+  return false;
 }
 
-void publishLocation2(Adafruit_FONA &fona) 
+bool publishLocation2(Adafruit_FONA &fona) 
 {
-  char data[180];
-  int nChars = fona.getGPS(0, data, 180);
+	char data[180];
+	packet.update(fona);
+	packet.buildPacket(data, 180);
   
-  if (nChars == 0) {
-    return;
-  }
-
-  dbg.printf("GPS  : %s\n", data);
+	dbg.printf("TK102: %s\n", data);
   
-  packet.update(data);
-  packet.buildPacket(data, 180);
-  
-  dbg.printf("TK102: %s\n", data);
+	if (false == fona.TCPsend(data, strlen(data)))
+		return false;
+	return fona.TCPsend("\n", 1);
 }
