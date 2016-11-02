@@ -1,6 +1,33 @@
 #include <stdint.h>
+#include <cmath>
+
 
 #include "Adafruit_FONA.h"
+
+struct Location2D {
+  float latitude;
+  float longitude;
+
+  Location2D(float latitude = 0, float longitude = 0) {
+    this->latitude = latitude;
+    this->longitude = longitude;
+  }
+  
+  float metersTo(const Location2D &other) {
+    float phi1 = latitude / 180.0f * M_PI;
+    float phi2 = other.latitude / 180.0f * M_PI;
+    float dphi = phi1 - phi1;
+    float dlam = (other.longitude - longitude) / 180.0f * M_PI;
+
+    float a = sinf(dphi/2) * sinf(dphi/2) +
+            cosf(phi1) * cosf(phi2) *
+            sinf(dlam/2) * sin(dlam/2);
+    float c = 2 * atan2f(sqrtf(a), sqrtf(1-a));
+
+    float R = 6371e3; // metres (radius)
+    return R * c;
+  }
+};
 
 class TK102Packet {
 public:

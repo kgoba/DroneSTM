@@ -39,6 +39,11 @@ DigitalIn  userButton(USER_BUTTON);
 
 PwmOut buzzer(PB_4);
 
+DigitalOut fonaRST(PA_1, 1);
+DigitalOut fonaKey(PF_4, 1);
+DigitalIn  fonaPstat(PA_4);
+
+// PinName tx, PinName rx, PinName rst, PinName ringIndicator
 Adafruit_FONA fona(PA_2, PA_3, PF_4, PA_0);
 
 I2C sensorBus(I2CSDAPin, I2CSCLPin);
@@ -64,13 +69,13 @@ void ledTimerTask(void const *argument) {
   static bool isOn = false;
   
   if (!isOn) {
-    led2 = (gpsCounter < 0) ? 1 : 0;
     led1 = (gprsCounter < 0) ? 1 : 0;
+    led2 = (gpsCounter < 0) ? 1 : 0;
     led3 = (netCounter < 0) ? 1 : 0;
   }
   else {
-    led2 = (gpsCounter < 0)  ? 1 : (gpsCounter < gpsStatus);
     led1 = (gprsCounter < 0) ? 1 : (gprsCounter < gprsStatus);
+    led2 = (gpsCounter < 0)  ? 1 : (gpsCounter < gpsStatus);
     led3 = (netCounter < 0)  ? 1 : (netCounter < networkStatus);
     
     if (++gpsCounter > 4) gpsCounter = 0;
@@ -106,9 +111,18 @@ void beepSuccess(bool success) {
 
 void trackingTask(void const *argument) 
 {	
-    CRC16<0xa001, true> crc;
-    uint16_t crcValue = crc.update("123456789");
-    dbg.printf("CRC check value: %04x\n", crcValue);
+    //CRC16<0xa001, true> crc;
+    //uint16_t crcValue = crc.update("123456789");
+    //dbg.printf("CRC check value: %04x\n", crcValue);
+
+    // Check if FONA is powered and turn it on if not
+    while (fonaPstat.read() == 0) {
+      dbg.printf("Powering up FONA...\n");
+      fonaKey = 0;
+      Thread::wait(2000);
+      fonaKey = 1;
+      Thread::wait(500);
+    }
   
     fona.begin(9600);
 
@@ -125,49 +139,70 @@ void trackingTask(void const *argument)
     fona.enableGPS(true);
     
     dbg.printf("Enabling GPRS...\n");
-    fona.enableTCPGPRS(false);
-    fona.setGPRSNetworkSettings(GPRS_APN, GPRS_USER, GPRS_PASS);
-    gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0; 
+    fona.enableTCPGPRS(false);                                      // Disable 
+    fona.setGPRSNetworkSettings(GPRS_APN, GPRS_USER, GPRS_PASS);    // Configure
+    gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0;                 // Reenable
+    
+    bool startLocationValid;
+    Location2D startLocation;
+    Location2D currentLocation;
     
     dbg.printf("Entering loop...\n");
     while(1) {
-        networkStatus = fona.getNetworkStatus();
-        int newGPSStatus = fona.GPSstatus();
-        if (newGPSStatus != gpsStatus) {
-			gpsStatus = newGPSStatus;
-			dbg.printf("GPS status: %d\n", gpsStatus);
-			uint8_t times = (gpsStatus > 3) ? 3 : gpsStatus;
-			beepTimes(times);
-		}
-        gprsStatus = fona.GPRSstate();
-        
-        if (!fona.TCPconnected()) {
-			dbg.printf("Establishing TCP/IP connection...");
-			bool success = fona.TCPconnect(TRACK_SERVER, TRACK_PORT);
-			dbg.printf(success ? "SUCCESS\n" : "FAILED\n");
-   		}
-        
-        //if (userButton) 
-        if (gpsStatus == 3) 
-        {
-			dbg.printf("Publishing location...");
-			led4 = 1;
-			bool success = publishLocation2(fona);
-			beepSuccess(success);
-			if (success) {
-				dbg.printf("SUCCESS\n");
-				led5 = 1;
-			}
-			else {
-				dbg.printf("FAILED\n");
-				led5 = 0;
-			}          
-			Thread::wait(1000);
-			led4 = 0;
+      networkStatus = fona.getNetworkStatus();
+      int newGPSStatus = fona.GPSstatus();
+      if (newGPSStatus != gpsStatus) {
+        gpsStatus = newGPSStatus;
+        dbg.printf("GPS status: %d\n", gpsStatus);
+        if (gpsStatus > 0) {
+          uint8_t times = (gpsStatus > 3) ? 3 : gpsStatus;
+          beepTimes(times);
         }
+      }
+      gprsStatus = fona.GPRSstate();
+          
+      if (!fona.TCPconnected()) {
+        dbg.printf("Establishing TCP/IP connection...");
+        bool success = fona.TCPconnect(TRACK_SERVER, TRACK_PORT);
+        dbg.printf(success ? "SUCCESS\n" : "FAILED\n");
+      }
+          
+      //if (userButton) 
+      if (gpsStatus == 3) 
+      {
+        float lat, lon;
+        if (fona.getGPS(&lat, &lon)) {
+          dbg.printf("Lat: %.5f, lon: %.5f\n", lat, lon);
+          if (!startLocationValid) {
+            startLocation.latitude = lat;
+            startLocation.longitude = lon;
+            startLocationValid = true;
+          }
+          else {
+            currentLocation.latitude = lat;
+            currentLocation.longitude = lon;
+            dbg.printf("Dist: %.1f\n", currentLocation.metersTo(startLocation));
+          }
+        }
+        
+        dbg.printf("Publishing location...");
+        led4 = 1;
+        bool success = publishLocation2(fona);
+        beepSuccess(success);
+        if (success) {
+          dbg.printf("SUCCESS\n");
+          led5 = 1;
+        }
+        else {
+          dbg.printf("FAILED\n");
+          led5 = 0;
+        }          
+        Thread::wait(1000);
+        led4 = 0;
+      }
 
-        //dbg.printf("Sleeping...\n");
-        Thread::wait(3000);
+      //dbg.printf("Sleeping...\n");
+      Thread::wait(3000);
     }  
 }
 
@@ -207,7 +242,6 @@ void testTask2(void const *argument) {
   
   Thread::wait(osWaitForever);
 }
-
 
 #define STACK_SIZE DEFAULT_STACK_SIZE
 

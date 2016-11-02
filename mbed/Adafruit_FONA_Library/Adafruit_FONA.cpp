@@ -629,7 +629,7 @@ uint8_t Adafruit_FONA::getGPS(uint8_t arg, char *buffer, uint8_t maxbuff) {
     return len;
 }
 
-bool Adafruit_FONA::getGPS(float *lat, float *lon, float *speed_kph, float *heading, float *altitude) {
+bool Adafruit_FONA::getGPS(float *lat, float *lon, float *altitude) {
     char gpsbuffer[120];
     
     // we need at least a 2D fix
@@ -637,121 +637,46 @@ bool Adafruit_FONA::getGPS(float *lat, float *lon, float *speed_kph, float *head
         return false;
     
     // grab the mode 2^5 gps csv from the sim808
-    uint8_t res_len = getGPS(32, gpsbuffer, 120);
+    uint8_t res_len = getGPS(0, gpsbuffer, 120);
     
     // make sure we have a response
     if (res_len == 0)
         return false;
     
-    // skip mode
+    // skip status
     char *tok = strtok(gpsbuffer, ",");
-    if (! tok) return false;
-    
-    // skip date
-    tok = strtok(NULL, ",");
     if (! tok) return false;
     
     // skip fix
     tok = strtok(NULL, ",");
     if (! tok) return false;
-    
+
+    // skip date
+    tok = strtok(NULL, ",");
+    if (! tok) return false;
+        
     // grab the latitude
     char *latp = strtok(NULL, ",");
     if (! latp) return false;
-    
-    // grab latitude direction
-    char *latdir = strtok(NULL, ",");
-    if (! latdir) return false;
-    
+       
     // grab longitude
     char *longp = strtok(NULL, ",");
     if (! longp) return false;
     
-    // grab longitude direction
-    char *longdir = strtok(NULL, ",");
-    if (! longdir) return false;
-    
-    double latitude = atof(latp);
-    double longitude = atof(longp);
-    
-    // convert latitude from minutes to decimal
-    float degrees = floor(latitude / 100);
-    double minutes = latitude - (100 * degrees);
-    minutes /= 60;
-    degrees += minutes;
-    
-    // turn direction into + or -
-    if (latdir[0] == 'S') degrees *= -1;
-    
-    *lat = degrees;
-    
-    // convert longitude from minutes to decimal
-    degrees = floor(longitude / 100);
-    minutes = longitude - (100 * degrees);
-    minutes /= 60;
-    degrees += minutes;
-    
-    // turn direction into + or -
-    if (longdir[0] == 'W') degrees *= -1;
-    
-    *lon = degrees;
-    
-    // only grab speed if needed
-    if (speed_kph != NULL) {
-        
-        // grab the speed in knots
-        char *speedp = strtok(NULL, ",");
-        if (! speedp) return false;
-        
-        // convert to kph
-        *speed_kph = atof(speedp) * 1.852;
-        
-    }
-    
-    // only grab heading if needed
-    if (heading != NULL) {
-        
-        // grab the speed in knots
-        char *coursep = strtok(NULL, ",");
-        if (! coursep) return false;
-        
-        *heading = atof(coursep);
-    
-    }
-    
-    // no need to continue
-    if (altitude == NULL)
-        return true;
-    
-    // we need at least a 3D fix for altitude
-    if (GPSstatus() < 3)
-        return false;
-    
-    // grab the mode 0 gps csv from the sim808
-    res_len = getGPS(0, gpsbuffer, 120);
-    
-    // make sure we have a response
-    if (res_len == 0)
-        return false;
-    
-    // skip mode
-    tok = strtok(gpsbuffer, ",");
-    if (! tok) return false;
-    
-    // skip lat
-    tok = strtok(NULL, ",");
-    if (! tok) return false;
-    
-    // skip long
-    tok = strtok(NULL, ",");
-    if (! tok) return false;
-    
-    // grab altitude
+    *lat = atof(latp);
+    *lon = atof(longp);
+       
     char *altp = strtok(NULL, ",");
-    if (! altp) return false;
-    
-    *altitude = atof(altp);
-    
+
+    // only grab altitude if needed
+    if (altitude != NULL) {      
+      // we need at least a 3D fix for altitude
+      if (GPSstatus() < 3)
+        return false;
+      if (! altp) return false;    
+      *altitude = atof(altp);
+    }
+        
     return true;
 }
 

@@ -51,3 +51,7 @@
 .metadata/
 
 .depend
+
+*.s#*
+*.b#*
+
