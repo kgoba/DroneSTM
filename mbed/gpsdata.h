@@ -7,10 +7,12 @@
 struct Location2D {
   float latitude;
   float longitude;
+  float altitude;
 
-  Location2D(float latitude = 0, float longitude = 0) {
+  Location2D(float latitude = 0, float longitude = 0, float altitude = 0) {
     this->latitude = latitude;
     this->longitude = longitude;
+    this->altitude = altitude;
   }
   
   float metersTo(const Location2D &other) {

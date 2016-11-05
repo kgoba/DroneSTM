@@ -30,15 +30,19 @@ struct Settings {
 
 Settings gSettings;
 
-#define SIM_PIN1        "2216"
+/*
+#define SIM_PIN1        "8398"
 
-#define GPRS_APN        "internet.lmt.lv"
+//#define GPRS_APN        "internet.lmt.lv"
+#define GPRS_APN        "data.tele2.lv"
 #define GPRS_USER       ""
 #define GPRS_PASS       ""
+* */
+
 #define HTTP_USERAGENT  "Mozilla/4.0"
 
 #define TRACK_SERVER	"sns.lv"
-#define TRACK_PORT		9007
+#define TRACK_PORT		9001
 
 DigitalOut led1(LED3);		// red		indicates GPRS connection status
 DigitalOut led2(LED4);		// blue		indicates GPS lock
@@ -140,7 +144,7 @@ void testFonaTask(void const *argument)
     }
 
     dbg.printf("Unlocking SIM...\n");
-    fona.unlockSIM(SIM_PIN1);
+    fona.unlockSIM(gSettings.pin);
     
     Thread::wait(500);
     fona.printf("AT+CGNSPWR=1\n");
@@ -183,19 +187,23 @@ void trackingTask(void const *argument)
     }
 
     dbg.printf("Unlocking SIM...\n");
-    fona.unlockSIM(SIM_PIN1);
+    fona.unlockSIM(gSettings.pin);
             
     dbg.printf("Enabling GPS...\n");
     fona.enableGPS(true);
     
     dbg.printf("Enabling GPRS...\n");
     fona.enableTCPGPRS(false);                                      // Disable 
-    fona.setGPRSNetworkSettings(GPRS_APN, GPRS_USER, GPRS_PASS);    // Configure
+    fona.setGPRSNetworkSettings(gSettings.gprsAPN, gSettings.gprsUser, gSettings.gprsPass);    // Configure
     gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0;                 // Reenable
     
     bool startLocationValid = false;
     Location2D startLocation;
     Location2D currentLocation;
+    bool wasOutside = false;
+    
+    //fona.sendSMS("0037129170012", "Test");
+    //fona.sendSMS(gSettings.alertPhone, "Test");
     
     dbg.printf("Entering loop...\n");
     while(1) {
@@ -220,18 +228,39 @@ void trackingTask(void const *argument)
       //if (userButton) 
       if (gpsStatus == 3) 
       {
-        float lat, lon;
-        if (fona.getGPS(&lat, &lon)) {
+        float lat, lon, alt;
+        if (fona.getGPS(&lat, &lon, &alt)) {
           if (!startLocationValid) {
-            dbg.printf("Setting starting location: (%.5f, %.5f)\n", lat, lon);
+            dbg.printf("Setting starting location: (%.5f, %.5f, %.1f)\n", lat, lon, alt);
             startLocation.latitude = lat;
             startLocation.longitude = lon;
+            startLocation.altitude = alt;
             startLocationValid = true;
           }
           else {
             currentLocation.latitude = lat;
             currentLocation.longitude = lon;
-            dbg.printf("Current location: (%.5f, %.5f), distance %.1fm\n", lat, lon, currentLocation.metersTo(startLocation));
+            currentLocation.altitude = alt;
+            float range = currentLocation.metersTo(startLocation);
+            float vrange = alt - startLocation.altitude;
+            dbg.printf("Current location: (%.5f, %.5f, %.1f), range %.1fm, vrange %.1fm\n", lat, lon, alt, range, vrange);
+            
+            if (range > gSettings.rangeHor || vrange > gSettings.rangeVert) {
+              // Start continuous beeping
+              buzzer = 0.5f;
+              if (!wasOutside) {
+                wasOutside = true;
+                fona.sendSMS(gSettings.alertPhone, "Drone outside boundaries");
+              }
+            }
+            else {
+              // Stop beeping
+              buzzer = 0;
+              if (wasOutside) {
+                wasOutside = false;
+                fona.sendSMS(gSettings.alertPhone, "Drone back inside boundaries");
+              }
+            }
           }
         }
         
@@ -256,80 +285,52 @@ void trackingTask(void const *argument)
     }  
 }
 
-void testTask1(void const *argument) {
-  /*
-# SIM PIN code
-2216
-
-# vertical range (m)
-300
-
-# horizontal range (m)
-200
-
-# alert phone number
-+37129170012
-
-# APN
-internet.lmt.lv
-
-# AP user
-""
-
-# AP pass
-""
-   */
+bool readSettings() {
   FILE *fp = fopen("/sd/config.txt", "r");
   if (fp == 0) {
     dbg.printf("SD read error (file cannot be opened)\n");
-    return;
+    return false;
   }
   else {
     char line[100];
     line[0] = 0;
 
-    while (0 != fgets(line, 100, fp)) {
-      if (line[0] != '#') {
-        dbg.printf("SD Read: %s", line);
-        break;
+    int idx = 0;
+    while (true) {
+      if (0 == fgets(line, 100, fp)) break;
+      
+      // Remove trailing newline symbols
+      char *ptr = line;
+      while (*ptr) {
+        if (*ptr == '\r' || *ptr == '\n') {
+          *ptr = '\0';
+          break;
+        }
+        ptr++;
+      }
+      
+      if (line[0] != '#' && line[0] != '\0') {
+        dbg.printf("SD Read: %s\n", line);
+        switch (idx) {
+          case 0: strncpy(gSettings.pin, line, 8); break;
+          case 1: sscanf(line, "%d", &gSettings.rangeVert); break;
+          case 2: sscanf(line, "%d", &gSettings.rangeHor); break;
+          case 3: strncpy(gSettings.alertPhone, line, 32); break;
+          case 4: strncpy(gSettings.gprsAPN, line, 32); break;
+          case 5: strncpy(gSettings.gprsUser, line, 32); break;
+          case 6: strncpy(gSettings.gprsPass, line, 32); break;
+        }
+        idx++;
       }
     }
     
     fclose(fp);   
+    if (idx < 6) return false;
   }
-  //Thread::wait(osWaitForever);
+  
+  return true;
 }
 
-/*
-void testTask2(void const *argument) {
-  FATFS fs;
-  FIL fp;
-  FRESULT fr;
-
-  // Mount filesystem
-  fr = f_mount(&fs, "", 1);
-  
-  while (!userButton) 
-  {
-    Thread::wait(100);
-  }
-  // Open file for writing
-  fr = f_open(&fp, "myfile.txt", FA_CREATE_NEW);
-  if (!fr) {
-    // Write single line and close the file
-    char str[] = "Hello World!\n";
-    //f_puts(str, &fp);
-    UINT bw;
-    f_write (&fp, (const void*) str, strlen(str), &bw);
-    fr = f_close(&fp);
-  }
-  
-  // Unmount filesystem
-  fr = f_mount(NULL, "", 0);
-  
-  Thread::wait(osWaitForever);
-}
-*/
 
 #define STACK_SIZE DEFAULT_STACK_SIZE
 
@@ -340,31 +341,27 @@ int main()
     dbg.baud(9600);
     dbg.printf("Reset!\n");
     
-    testTask1(0);
+    Thread::wait(500);
+    
+    int nTry = 5;
+    while (nTry > 0) {
+      if (readSettings()) break;
+      Thread::wait(100);
+      nTry--;
+    }
+    
+    if (nTry == 0) {
+      for (int i = 0; i < 5; i++) {
+        beepSuccess(false);
+        Thread::wait(50);
+      }
+    }
 
     RtosTimer ledTimer(ledTimerTask, osTimerPeriodic, NULL);  
     ledTimer.start(250);
 
-    //Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
     Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
-    //Thread testThread(testFonaTask, NULL, osPriorityNormal, STACK_SIZE);
-    //Thread testThread(testTask2, NULL, osPriorityNormal, 6000);
-        
-    //varioTask(); 
-    //trackingTask();
-    
-    /*
-    char *dir = "/sd/";
-    DIR *dp;
-    struct dirent *dirp;
-    dp = opendir(dir);
-    //read all directory and file names in current directory 
-    while((dirp = readdir(dp)) != NULL) {
-        dbg.printf("::: %s\n", dirp->d_name);
-    }
-    closedir(dp);
-    */
-    
+            
     while (true) 
     {
         // Just toggle LED to indicate the main (idle) loop
