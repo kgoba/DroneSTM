@@ -155,8 +155,8 @@ void TK102Packet::buildPacket(char *buf, int bufSize)
   float longitudeMin = 60 * (longitudeAbs - longitudeDeg);
   char  longitudeSign = (longitude >= 0) ? 'E' : 'W';
 
-  dbg.printf("Lat deg/min: %.0f %.4f\n", latitudeDeg, latitudeMin);
-  dbg.printf("Lon deg/min: %.0f %.4f\n", longitudeDeg, longitudeMin);
+  //dbg.printf("Lat deg/min: %.0f %.4f\n", latitudeDeg, latitudeMin);
+  //dbg.printf("Lon deg/min: %.0f %.4f\n", longitudeDeg, longitudeMin);
   
   // GPRMC,201120.000,A,5657.5108,N,02410.6618,E,0.00,67.76,110716,,,A*5D
   char nmea[100];
@@ -251,7 +251,7 @@ bool TK102Packet::update(char *str) {
   if (! tok) return false;
   sscanf(tok, "%f", &longitude);
   
-  dbg.printf("Lat/long: %.6f %.6f\n", latitude, longitude);
+  //dbg.printf("Lat/long: %.6f %.6f\n", latitude, longitude);
 
   // <MSL Altitude>,        8
   tok = tokenizer.next();
@@ -294,6 +294,6 @@ bool TK102Packet::update(Adafruit_FONA &fona) {
   
   char gpsStatus[120];
   fona.getGPS(0, gpsStatus, 120);
-  dbg.printf("GPS  : %s\n", gpsStatus);
+  //dbg.printf("GPS  : %s\n", gpsStatus);
   return update(gpsStatus);
 }

@@ -1,7 +1,6 @@
 #include "mbed.h"
 #include "rtos.h"
 #include "SDFileSystem.h"
-#include "ff.h"
 
 #include "debug.h"
 #include "Adafruit_FONA.h"
@@ -18,6 +17,18 @@ const PinName SD_MOSI   = PC_12;
 const PinName SD_MISO   = PC_11;
 const PinName SD_SCK    = PC_10;
 const PinName SD_NSS    = PD_1;
+
+struct Settings {
+  char pin[8];
+  char gprsAPN[32];
+  char gprsUser[32];
+  char gprsPass[32];
+  int  rangeHor;
+  int  rangeVert;
+  char alertPhone[32];
+};
+
+Settings gSettings;
 
 #define SIM_PIN1        "2216"
 
@@ -51,7 +62,7 @@ Barometer barometer(sensorBus);
 
 //Variometer vario;
 
-//SDFileSystem sd(SD_MOSI, SD_MISO, SD_SCK, SD_NSS, "sd");
+SDFileSystem sd(SD_MOSI, SD_MISO, SD_SCK, SD_NSS, "sd");
 
 bool publishLocation(Adafruit_FONA &fona);
 bool publishLocation2(Adafruit_FONA &fona);
@@ -109,6 +120,45 @@ void beepSuccess(bool success) {
 	buzzer = 0;
 }
 
+void testFonaTask(void const *argument) 
+{	
+    // Check if FONA is powered and turn it on if not
+    while (fonaPstat.read() == 0) {
+      dbg.printf("Powering up FONA...\n");
+      fonaKey = 0;
+      Thread::wait(2000);
+      fonaKey = 1;
+      Thread::wait(500);
+    }
+  
+    fona.begin(9600);
+
+    char imei[16];
+    if (fona.getIMEI(imei)) {
+      dbg.printf("IMEI: %.16s\n", imei);
+      packet.setIMEI(imei);
+    }
+
+    dbg.printf("Unlocking SIM...\n");
+    fona.unlockSIM(SIM_PIN1);
+    
+    Thread::wait(500);
+    fona.printf("AT+CGNSPWR=1\n");
+    Thread::wait(500);
+    fona.printf("AT+CGNSTST=1\n");
+    
+    while (true) {
+      if (fona.readable()) {
+        dbg.putc(fona.getc());
+      }
+      if (dbg.readable()) {
+        int c = dbg.getc();
+        dbg.putc(c);
+        fona.putc(c);
+      }
+    }
+}
+
 void trackingTask(void const *argument) 
 {	
     //CRC16<0xa001, true> crc;
@@ -143,7 +193,7 @@ void trackingTask(void const *argument)
     fona.setGPRSNetworkSettings(GPRS_APN, GPRS_USER, GPRS_PASS);    // Configure
     gprsStatus = fona.enableTCPGPRS(true) ? -1 : 0;                 // Reenable
     
-    bool startLocationValid;
+    bool startLocationValid = false;
     Location2D startLocation;
     Location2D currentLocation;
     
@@ -172,8 +222,8 @@ void trackingTask(void const *argument)
       {
         float lat, lon;
         if (fona.getGPS(&lat, &lon)) {
-          dbg.printf("Lat: %.5f, lon: %.5f\n", lat, lon);
           if (!startLocationValid) {
+            dbg.printf("Setting starting location: (%.5f, %.5f)\n", lat, lon);
             startLocation.latitude = lat;
             startLocation.longitude = lon;
             startLocationValid = true;
@@ -181,7 +231,7 @@ void trackingTask(void const *argument)
           else {
             currentLocation.latitude = lat;
             currentLocation.longitude = lon;
-            dbg.printf("Dist: %.1f\n", currentLocation.metersTo(startLocation));
+            dbg.printf("Current location: (%.5f, %.5f), distance %.1fm\n", lat, lon, currentLocation.metersTo(startLocation));
           }
         }
         
@@ -207,13 +257,50 @@ void trackingTask(void const *argument)
 }
 
 void testTask1(void const *argument) {
-  FILE *fp = fopen("/sd/myfile.txt", "w");
-  fprintf(fp, "Hello World!\n");
-  fclose(fp);
-  
-  Thread::wait(osWaitForever);
+  /*
+# SIM PIN code
+2216
+
+# vertical range (m)
+300
+
+# horizontal range (m)
+200
+
+# alert phone number
++37129170012
+
+# APN
+internet.lmt.lv
+
+# AP user
+""
+
+# AP pass
+""
+   */
+  FILE *fp = fopen("/sd/config.txt", "r");
+  if (fp == 0) {
+    dbg.printf("SD read error (file cannot be opened)\n");
+    return;
+  }
+  else {
+    char line[100];
+    line[0] = 0;
+
+    while (0 != fgets(line, 100, fp)) {
+      if (line[0] != '#') {
+        dbg.printf("SD Read: %s", line);
+        break;
+      }
+    }
+    
+    fclose(fp);   
+  }
+  //Thread::wait(osWaitForever);
 }
 
+/*
 void testTask2(void const *argument) {
   FATFS fs;
   FIL fp;
@@ -242,6 +329,7 @@ void testTask2(void const *argument) {
   
   Thread::wait(osWaitForever);
 }
+*/
 
 #define STACK_SIZE DEFAULT_STACK_SIZE
 
@@ -251,12 +339,15 @@ int main()
 
     dbg.baud(9600);
     dbg.printf("Reset!\n");
+    
+    testTask1(0);
 
     RtosTimer ledTimer(ledTimerTask, osTimerPeriodic, NULL);  
     ledTimer.start(250);
 
     //Thread varioThread(varioTask, NULL, osPriorityNormal, STACK_SIZE);
     Thread trackingThread(trackingTask, NULL, osPriorityNormal, STACK_SIZE);
+    //Thread testThread(testFonaTask, NULL, osPriorityNormal, STACK_SIZE);
     //Thread testThread(testTask2, NULL, osPriorityNormal, 6000);
         
     //varioTask(); 
@@ -472,7 +563,7 @@ bool publishLocation2(Adafruit_FONA &fona)
 	packet.update(fona);
 	packet.buildPacket(data, 180);
   
-	dbg.printf("TK102: %s\n", data);
+	//dbg.printf("TK102: %s\n", data);
   
 	if (false == fona.TCPsend(data, strlen(data)))
 		return false;
